@@ -201,13 +201,15 @@ circ(2.9, -15.9, 0.16, { e: 0.7, kind: 'rubber' });
 const TURBO_X = [-2.1, -1.2, -0.3, 0.6, 1.5];
 const TURBO = TURBO_X.map((x, i) => seg(x - 0.25, -13.3, x + 0.25, -13.3, { r: 0.1, e: 0.4, kind: 'turbo', id: i, hit: hitTurbo, vis: false }));
 // Campo de postes de goma
-[[-2.0, -11.6], [-0.3, -11.6], [1.4, -11.6], [-3.0, -10.3], [-1.15, -10.3], [0.55, -10.3], [2.3, -10.3]].forEach(p => circ(p[0], p[1], 0.17, { e: 0.65, kind: 'rubber' }));
+[[-2.0, -11.6], [-0.3, -11.6], [1.4, -11.6], [-1.15, -10.3], [0.55, -10.3], [2.3, -10.3]].forEach(p => circ(p[0], p[1], 0.17, { e: 0.65, kind: 'rubber' }));
 // Pasillo del spinner
 seg(-1.15, -8.8, -1.15, -7.4, { r: 0.1, e: 0.55, color: NEON.green, h: 0.45 });
 seg(0.55, -8.8, 0.55, -7.4, { r: 0.1, e: 0.55, color: NEON.green, h: 0.45 });
 circ(-1.15, -8.8, 0.14, { kind: 'rubber' }); circ(0.55, -8.8, 0.14, { kind: 'rubber' });
 circ(-1.15, -7.4, 0.14, { kind: 'rubber' }); circ(0.55, -7.4, 0.14, { kind: 'rubber' });
 const SPINNER = { x: -0.3, y: -8.1 };
+// guía que lleva la bola encima del mini flipper derecho (evita que se quede atascada junto a la pared)
+seg(4.0, -9.85, 3.35, -9.25, { color: NEON.pink, e: 0.3 });
 // Desviadores de goma laterales
 seg(-4.6, -6.2, -3.95, -5.0, { r: 0.1, e: 0.6, kick: 5, kind: 'rubber', color: NEON.cyan });
 circ(-3.95, -5.0, 0.14, { kind: 'rubber' });
@@ -244,7 +246,9 @@ const flippers = [
   { px: -2.3, py: 8.25, rest: 0.52, up: -0.44, ang: 0.52, w: 0, pressed: false, side: -1, L: 1.72, r1: 0.3, r2: 0.13 },
   { px: 1.7, py: 8.25, rest: Math.PI - 0.52, up: Math.PI + 0.44, ang: Math.PI - 0.52, w: 0, pressed: false, side: 1, L: 1.72, r1: 0.3, r2: 0.13 },
   // mini flipper superior derecho
-  { px: 3.25, py: -9.0, rest: Math.PI - 0.5, up: Math.PI + 0.45, ang: Math.PI - 0.5, w: 0, pressed: false, side: 1, L: 1.25, r1: 0.22, r2: 0.1 }
+  { px: 3.25, py: -9.0, rest: Math.PI - 0.5, up: Math.PI + 0.45, ang: Math.PI - 0.5, w: 0, pressed: false, side: 1, L: 1.25, r1: 0.22, r2: 0.1 },
+  // mini flipper superior izquierdo (deja hueco detrás para la órbita)
+  { px: -3.6, py: -11.2, rest: 0.5, up: -0.45, ang: 0.5, w: 0, pressed: false, side: -1, L: 1.25, r1: 0.22, r2: 0.1 }
 ];
 const FLIP_UP = 27, FLIP_DN = 15;
 
@@ -350,9 +354,9 @@ function hitTurbo(s, b, v) {
   G.bonus += 200; Snd.target(); vibrate(10); FX.turboHit(i); breakSkill();
   if (G.turbo.every(x => x)) {
     G.turbo = [0, 0, 0, 0, 0];
-    addScore(25000, -0.3, -12.5, 'TURBO', '#4ef');
-    if (!G.turboDone) { G.turboDone = true; G.extraBalls++; showMsg(['TURBO!', 'BOLA EXTRA'], 2.2, 'jackpot', true); Snd.jackpot(); FX.bigFlash(-0.3, -13, NEON.cyan); slowMo(0.6); }
-    else { showMsg(['TURBO!', '25.000'], 1.6, 'zoom'); Snd.fanfare(); FX.flashAll(0.8); }
+    addScore(25000, -0.3, -12.5, 'DULCE', '#4ef');
+    if (!G.turboDone) { G.turboDone = true; G.extraBalls++; showMsg(['DULCE!', 'BOLA EXTRA'], 2.2, 'jackpot', true); Snd.jackpot(); FX.bigFlash(-0.3, -13, NEON.cyan); slowMo(0.6); }
+    else { showMsg(['DULCE!', '25.000'], 1.6, 'zoom'); Snd.fanfare(); FX.flashAll(0.8); }
   }
 }
 function breakSkill() { if (G) G.skill = -1; }
@@ -639,9 +643,9 @@ function releasePlunger() {
 const LANE_SENS = [0, 1, 2].map(i => sensor(LANE_POSTS[i] + 0.6, -19.45, 0.45, b => laneHit(i, b)));
 sensor(SPINNER.x, SPINNER.y, 0.65, b => {
   const n = Math.round(clamp(Math.abs(b.vy) * 0.7, 2, 28)); G.spins = (G.spins || 0) + n;
-  addScore(100 * n, SPINNER.x, SPINNER.y - 0.6, 'SPINNER', '#6f9'); G.bonus += 20 * n;
+  addScore(100 * n, SPINNER.x, SPINNER.y - 0.6, 'REMOLINO', '#6f9'); G.bonus += 20 * n;
   FX.spin(n, b.vy);
-  if (G.spins >= 100) { G.spins -= 100; addScore(15000, SPINNER.x, SPINNER.y - 1.2, 'SUPER SPINNER', '#6f9'); showMsg(['SUPER', 'SPINNER'], 1.5, 'zoom'); Snd.fanfare(); }
+  if (G.spins >= 100) { G.spins -= 100; addScore(15000, SPINNER.x, SPINNER.y - 1.2, 'SUPER REMOLINO', '#6f9'); showMsg(['SUPER', 'REMOLINO'], 1.5, 'zoom'); Snd.fanfare(); }
 }, { cool: 0.5 });
 sensor(-3.95, -16.6, 0.6, b => { if (b.vy < 0) G.orbitT = clock; }, { cool: 0.4 });
 sensor(3.45, -16.8, 0.55, b => {
@@ -669,6 +673,35 @@ const hud = document.getElementById('hud');
 const hx = hud.getContext('2d');
 let W = 0, H = 0, DPR = 1, DMD_H = 0, DMD_Y = 0;
 
+/* Piruleta en espiral, con palo y borde de neón */
+function drawLolli(c, x, y, r, cols, stick, neon) {
+  c.save();
+  if (stick > 0) {
+    c.shadowColor = neon; c.shadowBlur = r * 0.25;
+    c.fillStyle = '#f4eefa'; roundRect(c, x - r * 0.085, y, r * 0.17, r + stick, r * 0.08); c.fill();
+    c.shadowBlur = 0; c.fillStyle = 'rgba(255,90,180,0.55)';
+    for (let k = 0; k < 6; k++) { const yy = y + r + k * stick / 6; c.fillRect(x - r * 0.085, yy, r * 0.17, stick / 18); }
+  }
+  // halo de neón
+  c.shadowColor = neon; c.shadowBlur = r * 0.45; c.fillStyle = cols[0]; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.shadowBlur = 0;
+  c.save(); c.beginPath(); c.arc(x, y, r, 0, 7); c.clip(); c.translate(x, y);
+  const N = cols.length * 3, tw = 3.6;
+  for (let i = 0; i < N; i++) {
+    const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
+    c.beginPath(); c.moveTo(0, 0);
+    for (let k = 0; k <= 24; k++) { const q = k / 24, rho = r * 1.08 * q, a = a0 + tw * q; c.lineTo(Math.cos(a) * rho, Math.sin(a) * rho); }
+    for (let k = 24; k >= 0; k--) { const q = k / 24, rho = r * 1.08 * q, a = a1 + tw * q; c.lineTo(Math.cos(a) * rho, Math.sin(a) * rho); }
+    c.closePath(); c.fillStyle = cols[i % cols.length]; c.fill();
+  }
+  let g = c.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.05, 0, 0, r);
+  g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(0.45, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(40,0,40,0.35)');
+  c.fillStyle = g; c.fillRect(-r, -r, r * 2, r * 2);
+  c.restore();
+  c.lineWidth = Math.max(2, r * 0.07); c.strokeStyle = neon; c.shadowColor = neon; c.shadowBlur = r * 0.3;
+  c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
+  c.restore();
+}
+
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: false, powerPreference: 'high-performance', alpha: false });
@@ -691,11 +724,11 @@ const Scene3D = (() => {
   const envScene = new THREE.Scene();
   envScene.add(new THREE.Mesh(new THREE.BoxGeometry(40, 20, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.01, 0.05), side: THREE.BackSide })));
   const panel = (w, h, col, x, y, z, ry, rx) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0], col[1], col[2]), side: THREE.DoubleSide })); m.position.set(x, y, z); m.rotation.y = ry || 0; m.rotation.x = rx || 0; envScene.add(m); };
-  panel(16, 3, [3, 2.8, 3.2], 0, 9.5, 0, 0, Math.PI / 2);
-  panel(3, 18, [3, 0.25, 1.8], -19.5, 0, 0, Math.PI / 2);
-  panel(3, 18, [0.2, 2, 3], 19.5, 0, 0, -Math.PI / 2);
-  panel(20, 2, [3, 1.6, 0.3], 0, 2, -19.5);
-  panel(20, 1.2, [1.2, 0.3, 3], 0, -3, 19.5);
+  panel(16, 3, [1.1, 1.0, 1.15], 0, 9.5, 0, 0, Math.PI / 2);
+  panel(3, 18, [0.9, 0.1, 0.55], -19.5, 0, 0, Math.PI / 2);
+  panel(3, 18, [0.07, 0.6, 0.9], 19.5, 0, 0, -Math.PI / 2);
+  panel(20, 2, [0.9, 0.5, 0.1], 0, 2, -19.5);
+  panel(20, 1.2, [0.4, 0.1, 0.9], 0, -3, 19.5);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envTex = pmrem.fromScene(envScene, 0.03).texture;
 
@@ -718,25 +751,18 @@ const Scene3D = (() => {
     let g = t.createLinearGradient(0, 0, 0, TEXH);
     g.addColorStop(0, '#05041a'); g.addColorStop(0.3, '#0d0830'); g.addColorStop(0.62, '#170a3c'); g.addColorStop(0.85, '#2a0b3e'); g.addColorStop(1, '#12051c');
     t.fillStyle = g; t.fillRect(0, 0, TEXW, TEXH);
-    // estrellas
-    for (let i = 0; i < 420; i++) { t.fillStyle = `rgba(255,255,255,${rnd(0.15, 0.8)})`; const s = rnd(1, 3.2); t.fillRect(rnd(0, TEXW), rnd(0, cy(0)), s, s); }
-    // planeta con anillo (zona central)
-    {
-      const px = cx(CX), py = cy(-9.6), pr = cs(1.7);
-      let pg = t.createRadialGradient(px - pr * 0.4, py - pr * 0.4, pr * 0.1, px, py, pr);
-      pg.addColorStop(0, '#b78cff'); pg.addColorStop(0.6, '#5a2bb0'); pg.addColorStop(1, '#1c0b45');
-      t.save(); t.shadowColor = '#8a5cff'; t.shadowBlur = 50; t.fillStyle = pg; t.beginPath(); t.arc(px, py, pr, 0, 7); t.fill(); t.restore();
-      t.save(); t.translate(px, py); t.rotate(-0.35); t.scale(1, 0.28); t.strokeStyle = 'rgba(0,229,255,0.75)'; t.lineWidth = 10; t.beginPath(); t.arc(0, 0, pr * 1.75, 0, 7); t.stroke(); t.strokeStyle = 'rgba(255,47,168,0.5)'; t.lineWidth = 5; t.beginPath(); t.arc(0, 0, pr * 2.05, 0, 7); t.stroke(); t.restore();
-      // líneas de velocidad "turbo"
-      t.strokeStyle = 'rgba(0,229,255,0.35)'; t.lineWidth = 4;
-      for (let i = 0; i < 9; i++) { const yy = cy(-14.2 + i * 0.12); t.beginPath(); t.moveTo(cx(-3.0 + i * 0.1), yy); t.lineTo(cx(2.4 - i * 0.1), yy); t.stroke(); }
-    }
-    // sol synthwave
-    const sx = cx(CX), sy = cy(1.7), sr = cs(2.3);
-    g = t.createLinearGradient(0, sy - sr, 0, sy + sr); g.addColorStop(0, '#ffe25a'); g.addColorStop(0.5, '#ff6a3d'); g.addColorStop(1, '#ff1f8e');
-    t.save(); t.shadowColor = '#ff3d8b'; t.shadowBlur = 60; t.fillStyle = g; t.beginPath(); t.arc(sx, sy, sr, 0, Math.PI * 2); t.fill(); t.restore();
-    t.fillStyle = '#1d0a3c';
-    for (let i = 0; i < 7; i++) { const yy = sy + sr * (0.05 + i * 0.14); t.fillRect(sx - sr, yy, sr * 2, 3 + i * 2.2); }
+    // virutas de caramelo (sprinkles)
+    const SPR = ['#ff5fb8', '#5ff3ff', '#ffe066', '#9dff6a', '#ffffff', '#c08cff'];
+    for (let i = 0; i < 520; i++) { t.save(); t.globalAlpha = rnd(0.25, 0.6); t.fillStyle = SPR[i % SPR.length]; t.translate(rnd(0, TEXW), rnd(0, cy(3.8))); t.rotate(rnd(0, 3.14)); const w = rnd(8, 16); roundRect(t, -w / 2, -2.5, w, 5, 2.5); t.fill(); t.restore(); }
+    // piruleta central (zona de obstáculos)
+    drawLolli(t, cx(CX), cy(-9.6), cs(1.65), ['#00d9ff', '#ffffff', '#b46bff', '#ffffff'], cs(1.6), '#00e5ff');
+    // pequeñas piruletas decorativas
+    drawLolli(t, cx(-3.85), cy(-2.2), cs(0.45), ['#ffe066', '#ffffff'], cs(0.6), '#ffe066');
+    drawLolli(t, cx(3.3), cy(4.3), cs(0.38), ['#9dff6a', '#ffffff'], cs(0.5), '#9dff6a');
+    drawLolli(t, cx(-3.2), cy(0.6), cs(0.32), ['#c08cff', '#ffffff'], cs(0.45), '#c08cff');
+    drawLolli(t, cx(CX), cy(-18.2), cs(0.4), ['#ff5fb8', '#ffffff'], 0, '#ff5fb8');
+    // gran piruleta (zona inferior)
+    drawLolli(t, cx(CX), cy(1.7), cs(2.25), ['#ff2f8e', '#ffffff', '#ffd23f', '#ffffff'], cs(2.3), '#ff2fa8');
     // rejilla synthwave
     const hy = cy(3.9); t.strokeStyle = 'rgba(255,60,200,0.55)'; t.lineWidth = 3;
     t.fillStyle = '#16052a'; t.fillRect(0, hy, TEXW, cy(8.6) - hy);
@@ -761,8 +787,8 @@ const Scene3D = (() => {
     // etiquetas
     const label = (txt, x, y, size, col, rot) => { t.save(); t.translate(cx(x), cy(y)); if (rot) t.rotate(rot); t.font = `bold ${cs(size)}px Arial, sans-serif`; t.textAlign = 'center'; t.textBaseline = 'middle'; t.fillStyle = col; t.shadowColor = col; t.shadowBlur = 12; t.fillText(txt, 0, 0); t.restore(); };
     ['P', 'I', 'R'].forEach((L, i) => label(L, LANE_POSTS[i] + 0.6, -18.55, 0.42, '#ffe066'));
-    ['T', 'U', 'R', 'B', 'O'].forEach((L, i) => label(L, TURBO_X[i], -12.35, 0.3, '#7ff4ff'));
-    label('SPINNER', SPINNER.x, -6.75, 0.24, '#7dffa8');
+    ['D', 'U', 'L', 'C', 'E'].forEach((L, i) => label(L, TURBO_X[i], -12.35, 0.3, '#7ff4ff'));
+    label('REMOLINO', SPINNER.x, -6.75, 0.24, '#7dffa8');
     ['2X', '3X', '4X', '5X'].forEach((L, i) => label(L, CX - 1.35 + i * 0.9, 7.25, 0.22, '#ffffff'));
     label('LOCK', 1.55, -0.65, 0.26, '#ff7ad9', -0.9);
     label('JACKPOT', 2.95, -0.65, 0.22, '#ffe066', 0.9);
@@ -776,12 +802,12 @@ const Scene3D = (() => {
     t.lineTo(0, cy(ARC.y)); t.closePath(); t.fill();
   }
   const pfTex = new THREE.CanvasTexture(tc); pfTex.colorSpace = THREE.SRGBColorSpace; pfTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const pf = new THREE.Mesh(new THREE.PlaneGeometry(TW, TL), new THREE.MeshStandardMaterial({ map: pfTex, roughness: 0.38, metalness: 0.1, envMap: envTex, envMapIntensity: 0.55 }));
+  const pf = new THREE.Mesh(new THREE.PlaneGeometry(TW, TL), new THREE.MeshStandardMaterial({ map: pfTex, roughness: 0.55, metalness: 0.0, envMap: envTex, envMapIntensity: 0.12 }));
   pf.rotation.x = -Math.PI / 2; pf.position.set((X0 + X1) / 2, 0, (Y0 + Y1) / 2); scene.add(pf);
 
   /* ---------- Paredes (instanciadas) ---------- */
   const wallSegs = segs.filter(s => s.vis && s.kind !== 'sling');
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1b1533, metalness: 0.7, roughness: 0.3, envMap: envTex, envMapIntensity: 1 });
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1b1533, metalness: 0.5, roughness: 0.45, envMap: envTex, envMapIntensity: 0.4 });
   const rubberMat = new THREE.MeshStandardMaterial({ color: 0xf2f0ff, metalness: 0, roughness: 0.55, emissive: 0x221133 });
   const wallsI = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), wallMat, wallSegs.length);
   const neonI = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }), wallSegs.length);
@@ -799,9 +825,11 @@ const Scene3D = (() => {
   scene.add(wallsI); scene.add(neonI);
   // postes de goma
   const postGeo = new THREE.CylinderGeometry(1, 1, 1, 20);
-  circles.filter(c => c.kind === 'rubber' || c.kind === 'post').forEach(c => {
+  const CANDY = [0xff2f8e, 0x00d9ff, 0xffd23f, 0x9dff6a, 0xc08cff];
+  const candyMats = CANDY.map(c => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.4, metalness: 0 }));
+  circles.filter(c => c.kind === 'rubber' || c.kind === 'post').forEach((c, ci) => {
     const m = new THREE.Mesh(postGeo, rubberMat); m.scale.set(c.r, 0.45, c.r); m.position.set(c.x, 0.225, c.y); scene.add(m);
-    const cap = new THREE.Mesh(postGeo, new THREE.MeshStandardMaterial({ color: 0xffd040, metalness: 0.9, roughness: 0.2, envMap: envTex })); cap.scale.set(c.r * 0.55, 0.12, c.r * 0.55); cap.position.set(c.x, 0.5, c.y); scene.add(cap);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), candyMats[ci % 5]); cap.scale.set(c.r * 0.75, c.r * 0.6, c.r * 0.75); cap.position.set(c.x, 0.5, c.y); scene.add(cap);
   });
 
   /* ---------- Slingshots ---------- */
@@ -825,10 +853,14 @@ const Scene3D = (() => {
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.6, 0.18, 32), new THREE.MeshStandardMaterial({ color: 0x111122, metalness: 0.8, roughness: 0.25, envMap: envTex })); base.position.y = 0.09; g.add(base);
     const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 2, 3) });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.06, 10, 40), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = 0.28; g.add(ring);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.38, 32, 1, true), new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.95, roughness: 0.12, envMap: envTex, envMapIntensity: 1.3 })); body.position.y = 0.37; g.add(body);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.38, 32, 1, true), new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.6, roughness: 0.35, envMap: envTex, envMapIntensity: 0.5 })); body.position.y = 0.37; g.add(body);
     const capMat = new THREE.MeshStandardMaterial({ color: 0x101020, emissive: new THREE.Color([2.5, 0.2, 1.5][0], [0.2, 2.2, 0.2][i] || 0.4, 2.5), emissiveIntensity: 0.6, metalness: 0.2, roughness: 0.15, transparent: true, opacity: 0.95 });
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.48, 0.14, 32), capMat); cap.position.y = 0.62; g.add(cap);
-    const star = new THREE.Mesh(new THREE.CircleGeometry(0.22, 5), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.6, 1) })); star.rotation.x = -Math.PI / 2; star.position.y = 0.70; g.add(star);
+    const sw = document.createElement('canvas'); sw.width = sw.height = 256; const swc = sw.getContext('2d');
+    const swCols = [['#ff2f8e', '#ffffff'], ['#00d9ff', '#ffffff'], ['#ffd23f', '#ffffff'], ['#9dff6a', '#ffffff'], ['#c08cff', '#ffffff']][i % 5];
+    drawLolli(swc, 128, 128, 112, swCols, 0, swCols[0]);
+    const swTex = new THREE.CanvasTexture(sw); swTex.colorSpace = THREE.SRGBColorSpace;
+    const star = new THREE.Mesh(new THREE.CircleGeometry(0.47, 40), new THREE.MeshBasicMaterial({ map: swTex, color: new THREE.Color(0.85, 0.85, 0.85), transparent: true })); star.rotation.x = -Math.PI / 2; star.position.y = 0.70; g.add(star);
     const k = b.r / 0.5; g.scale.set(k, 1, k);
     scene.add(g);
     return { g, ringMat, capMat, star, flash: 0, ring, cap };
@@ -910,7 +942,7 @@ const Scene3D = (() => {
     const g = new THREE.Group(); g.position.set(f.px, 0.03, f.py);
     const m = new THREE.Mesh(flipGeo(f), new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.35, emissive: 0x1a1030 }));
     g.add(m);
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(f.L * 0.85, 0.03, 0.08), new THREE.MeshBasicMaterial({ color: new THREE.Color(i ? 1.8 : 0.15, i ? 0.2 : 1.3, i ? 1.1 : 1.8) }));
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(f.L * 0.85, 0.03, 0.08), new THREE.MeshBasicMaterial({ color: new THREE.Color(f.side > 0 ? 1.8 : 0.15, f.side > 0 ? 0.2 : 1.3, f.side > 0 ? 1.1 : 1.8) }));
     stripe.position.set(f.L * 0.47, 0.4, 0); g.add(stripe);
     const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 16), new THREE.MeshStandardMaterial({ color: 0xffd040, metalness: 1, roughness: 0.2, envMap: envTex })); pin.position.y = 0.42; g.add(pin);
     scene.add(g); return { g, stripe };
@@ -962,26 +994,26 @@ const Scene3D = (() => {
   {
     const bc = document.createElement('canvas'); bc.width = 1024; bc.height = 512; const b = bc.getContext('2d');
     let g = b.createLinearGradient(0, 0, 0, 512); g.addColorStop(0, '#05010f'); g.addColorStop(0.6, '#2a0640'); g.addColorStop(1, '#ff2f8e'); b.fillStyle = g; b.fillRect(0, 0, 1024, 512);
-    b.fillStyle = '#ffcf4a'; b.shadowColor = '#ff5a3d'; b.shadowBlur = 40; b.beginPath(); b.arc(512, 400, 170, Math.PI, 0); b.fill(); b.shadowBlur = 0;
-    b.fillStyle = '#2a0640'; for (let i = 0; i < 6; i++) b.fillRect(330, 300 + i * 18, 370, 4 + i * 1.5);
     b.strokeStyle = 'rgba(0,230,255,0.8)'; b.lineWidth = 3; for (let i = 0; i < 9; i++) { b.beginPath(); b.moveTo(0, 412 + i * i * 1.3); b.lineTo(1024, 412 + i * i * 1.3); b.stroke(); }
+    drawLolli(b, 512, 250, 140, ['#ff2f8e', '#ffffff', '#ffd23f', '#ffffff'], 120, '#ff2fa8');
+    drawLolli(b, 230, 300, 80, ['#00d9ff', '#ffffff'], 90, '#00e5ff');
+    drawLolli(b, 800, 290, 90, ['#9dff6a', '#ffffff', '#c08cff', '#ffffff'], 100, '#c08cff');
     const bt = new THREE.CanvasTexture(bc); bt.colorSpace = THREE.SRGBColorSpace;
     const bb = new THREE.Mesh(new THREE.PlaneGeometry(26, 13), new THREE.MeshBasicMaterial({ map: bt, color: new THREE.Color(0.9, 0.9, 0.9), fog: false })); bb.position.set(0.1, 4.5, TOP_Y - 8); scene.add(bb);
   }
 
   /* ---------- Bolas ---------- */
   const ballGeo = new THREE.SphereGeometry(BR, 32, 20);
-  const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.06, envMap: envTex, envMapIntensity: 1.6 });
+  const ballMat = new THREE.MeshStandardMaterial({ color: 0xe8e8f0, metalness: 0.85, roughness: 0.34, envMap: envTex, envMapIntensity: 0.55 });
   const shTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 2, 32, 32, 32); g.addColorStop(0, 'rgba(0,0,0,0.85)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const shMat = new THREE.MeshBasicMaterial({ map: shTex, transparent: true, depthWrite: false });
   const shGeo = new THREE.PlaneGeometry(BR * 3.2, BR * 3.2);
   function addBall(b) {
     const m = new THREE.Mesh(ballGeo, ballMat); scene.add(m);
     const s = new THREE.Mesh(shGeo, shMat); s.rotation.x = -Math.PI / 2; scene.add(s);
-    const glow = new THREE.PointLight(0xffffff, 0, 2.2, 2); scene.add(glow);
-    b.mesh = m; b.shadow = s; b.glow = glow; b.rot = new THREE.Quaternion(); b.prevX = b.x; b.prevY = b.y;
+    b.mesh = m; b.shadow = s; b.rot = new THREE.Quaternion(); b.prevX = b.x; b.prevY = b.y;
   }
-  function removeBall(b) { if (b.mesh) { scene.remove(b.mesh); scene.remove(b.shadow); scene.remove(b.glow); b.mesh = null; } }
+  function removeBall(b) { if (b.mesh) { scene.remove(b.mesh); scene.remove(b.shadow); b.mesh = null; } }
 
   /* ---------- Partículas ---------- */
   const PN = 900;
@@ -1134,7 +1166,7 @@ const Scene3D = (() => {
       b.ringMat.color.setRGB(rc[0] * (0.4 + b.flash * 1.6), rc[1] * (0.4 + b.flash * 1.6), rc[2] * (0.4 + b.flash * 1.6));
       const s = 1 + b.flash * 0.12; b.cap.scale.set(s, 1, s);
       b.ring.position.y = 0.28 - b.flash * 0.12;
-      b.star.rotation.z += rt * (1 + b.flash * 20);
+      b.star.rotation.z += rt * (1 + b.flash * 20); b.star.material.color.setScalar(0.85 + b.flash * 1.4 + FX.allFlash * 0.4);
     });
     slings.forEach(s => {
       s.flash = Math.max(0, s.flash - rt * 6);
@@ -1153,7 +1185,7 @@ const Scene3D = (() => {
     const sk = 0.6 + FX.saucerGlow * 3 + (G && (G.lockLit || G.multiball) ? 0.6 + 0.6 * Math.sin(camT * 10) : 0);
     sRingMat.color.setRGB(3 * sk, 0.8 * sk, 0.1 * sk);
     // flippers
-    flippers.forEach((f, i) => { flipMeshes[i].g.rotation.y = -f.ang; const k = f.pressed ? 1.5 : 1; flipMeshes[i].stripe.material.color.setRGB((i ? 1.8 : 0.15) * k, (i ? 0.2 : 1.3) * k, (i ? 1.1 : 1.8) * k); });
+    flippers.forEach((f, i) => { flipMeshes[i].g.rotation.y = -f.ang; const k = f.pressed ? 1.5 : 1; const sd = f.side > 0; flipMeshes[i].stripe.material.color.setRGB((sd ? 1.8 : 0.15) * k, (sd ? 0.2 : 1.3) * k, (sd ? 1.1 : 1.8) * k); });
     plungerG.position.z = 9.9 + plunger.pull * 0.55;
     gateSwing = Math.max(0, gateSwing - rt * 3); gateG.rotation.x = -Math.sin(Math.min(1, gateSwing) * 1.3) * 1.0;
     // leds
@@ -1171,7 +1203,6 @@ const Scene3D = (() => {
       b.prevX = b.x; b.prevY = b.y;
       b.shadow.position.set(b.x + 0.12, 0.012, b.y + 0.08); b.shadow.visible = !b.held;
       const sp = Math.hypot(b.vx, b.vy);
-      b.glow.position.set(b.x, h + 0.3, b.y); b.glow.intensity = Math.min(3, sp * 0.06);
       // estela
       if (sp > 14 && !b.held && rt > 0) {
         const n = sp > 28 ? 2 : 1;
@@ -1403,7 +1434,8 @@ function drawHUD(dt) {
   const cxw = w / 2, bw = Math.min(w * 0.72, 330 * DPR), bh = 58 * DPR;
   if (STATE === 'title' && !menuPanel) {
     g.save(); g.textAlign = 'center';
-    const ty = (DMD_Y + DMD_H) * DPR + h * 0.1;
+    const ty = (DMD_Y + DMD_H) * DPR + h * 0.165;
+    drawLolli(g, cxw, ty - 72 * DPR, 26 * DPR, ['#ff2f8e', '#ffffff', '#ffd23f', '#ffffff'], 0, '#ff2fa8');
     g.font = `900 ${Math.round(46 * DPR)}px Arial Black, Impact, sans-serif`; g.shadowColor = '#00e5ff'; g.shadowBlur = 25 * DPR;
     g.fillStyle = '#fff'; g.fillText('PIRU', cxw, ty);
     g.font = `900 ${Math.round(26 * DPR)}px Arial Black, Impact, sans-serif`; g.shadowColor = '#ff2fa8';
