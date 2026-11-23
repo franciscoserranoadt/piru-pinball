@@ -21,7 +21,7 @@ const Store = {
     } catch (e) {}
   }
 };
-const DEFAULTS = { music: true, sfx: true, vib: true, q: 1, cam: 1, high: [], games: 0 };
+const DEFAULTS = { music: true, sfx: true, vib: true, voice: true, q: 1, cam: 1, high: [], games: 0 };
 const save = Object.assign({}, DEFAULTS, Store.get('pirupinball', {}));
 function persist() { Store.set('pirupinball', save); }
 function vibrate(ms) {
@@ -62,6 +62,13 @@ const Snd = {
     this.rollG = c.createGain(); this.rollG.gain.value = 0;
     rs.connect(rf); rf.connect(this.rollG); this.rollG.connect(this.sfx); rs.start();
     this.rollF = rf;
+    // traqueteo metálico de la rampa
+    const ra = c.createBufferSource(); ra.buffer = nb; ra.loop = true;
+    const raf = c.createBiquadFilter(); raf.type = 'bandpass'; raf.frequency.value = 1500; raf.Q.value = 2.5;
+    const trem = c.createGain(); trem.gain.value = 0.5; const lfo = c.createOscillator(); lfo.frequency.value = 23; const lfoG = c.createGain(); lfoG.gain.value = 0.5;
+    lfo.connect(lfoG); lfoG.connect(trem.gain); lfo.start();
+    this.rampG = c.createGain(); this.rampG.gain.value = 0;
+    ra.connect(raf); raf.connect(trem); trem.connect(this.rampG); this.rampG.connect(this.sfx); ra.start();
     this.musNext = c.currentTime + 0.1;
     this.apply();
   },
@@ -90,7 +97,7 @@ const Snd = {
   },
   flipper() { this.noise(0.06, 0.5, 2400, 1.2); this.tone(110, 0.08, 'sine', 0.35, 60); },
   flipDown() { this.noise(0.04, 0.18, 1200, 1); },
-  bumper(i) { const f = [520, 620, 740][i % 3]; this.tone(f, 0.12, 'square', 0.18, f * 0.45); this.noise(0.08, 0.35, 3000, 0.8); this.tone(70, 0.12, 'sine', 0.4, 40); },
+  bumper(i) { this.noise(0.02, 0.45, 5200, 1); const f = [520, 620, 740][i % 3]; this.tone(f, 0.12, 'square', 0.18, f * 0.45); this.noise(0.08, 0.35, 3000, 0.8); this.tone(70, 0.12, 'sine', 0.4, 40); },
   sling() { this.noise(0.07, 0.45, 1800, 2); this.tone(260, 0.07, 'sawtooth', 0.12, 140); },
   wall(v) { this.noise(0.03, Math.min(0.25, v * 0.012), 900, 1.5); },
   drop() { this.tone(180, 0.15, 'triangle', 0.35, 70); this.noise(0.08, 0.3, 700, 1); },
@@ -108,26 +115,42 @@ const Snd = {
   kick() { this.tone(70, 0.25, 'sawtooth', 0.35, 300); this.noise(0.2, 0.5, 1200, 0.7); },
   start() { [392, 523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.14, 'square', 0.12, f, i * 0.07)); },
   setRoll(v) { if (!this.c) return; const t = this.c.currentTime; this.rollG.gain.setTargetAtTime(save.sfx ? Math.min(0.22, v * 0.008) : 0, t, 0.05); this.rollF.frequency.setTargetAtTime(220 + v * 18, t, 0.05); },
-  // Música synthwave sencilla
-  music(intense) {
+  // Música synthwave (3 ambientes: normal, multibola, misión)
+  music(mode) {
     const c = this.c; if (!c || !save.music) { if (c) this.musNext = c.currentTime + 0.1; return; }
-    const bpm = intense ? 132 : 112; const st = 60 / bpm / 4;
-    const prog = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+    mode = mode || 0;
+    const bpm = [118, 136, 128][mode]; const st = 60 / bpm / 4;
+    const PROGS = [
+      [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]],
+      [[50, 53, 57], [46, 50, 53], [48, 52, 55], [45, 49, 52]],
+      [[52, 55, 59], [48, 52, 55], [50, 53, 57], [47, 51, 54]]];
+    const MELS = [
+      [76, -1, 74, 72, -1, 69, -1, 72, 74, -1, 76, -1, 79, -1, 76, -1, 74, -1, 72, -1, 69, -1, 67, 69, 72, -1, -1, 74, 72, -1, -1, -1],
+      [74, 74, 77, -1, 74, 72, 69, -1, 74, 74, 77, -1, 79, 77, 74, -1, 72, 72, 76, -1, 72, 69, 67, -1, 69, 72, 74, 76, 77, 76, 74, -1],
+      [76, -1, 79, -1, 83, -1, 79, 76, 74, -1, 77, -1, 81, -1, 77, 74, 76, -1, 79, -1, 84, 83, 79, 76, 74, -1, 71, -1, 74, -1, -1, -1]];
+    const prog = PROGS[mode], mel = MELS[mode];
     while (this.musNext < c.currentTime + 0.25) {
       const t = this.musNext, s = this.musStep, bar = Math.floor(s / 16) % 4, ch = prog[bar], k = s % 16;
       const mf = n => 440 * Math.pow(2, (n - 69) / 12);
       // bajo
-      if (k % 2 === 0) this.note(mf(ch[0] - 24 + (k % 8 === 6 ? 12 : 0)), st * 1.6, 'sawtooth', 0.16, t, 500);
+      if (k % 2 === 0) this.note(mf(ch[0] - 24 + (k % 8 === 6 ? 12 : 0)), st * 1.6, 'sawtooth', 0.15, t, 520);
       // arpegio
       const an = ch[(k % 3)] + (k % 6 >= 3 ? 12 : 0);
-      this.note(mf(an), st * 0.9, 'square', 0.05, t, 2600);
-      // bombo y caja
+      this.note(mf(an), st * 0.9, 'square', 0.035, t, 2400);
+      // melodía (cada 2 pasos)
+      if (k % 2 === 0) { const mn = mel[(Math.floor(s / 2)) % mel.length]; if (mn > 0) { this.note(mf(mn), st * 1.8, 'square', 0.05, t, 3200); this.note(mf(mn) * 1.005, st * 1.8, 'sawtooth', 0.03, t, 2200); } }
+      // batería
       if (k % 4 === 0) this.kickAt(t);
       if (k % 8 === 4) this.snareAt(t);
-      if (intense && k % 2 === 1) this.hatAt(t);
+      if (k % 2 === 1 || mode) this.hatAt(t);
       this.musNext += st; this.musStep++;
     }
   },
+  knocker() { this.tone(55, 0.3, 'square', 0.5, 38); this.noise(0.09, 0.9, 260, 0.7, 'lowpass'); this.tone(1750, 0.4, 'triangle', 0.05, 1700); },
+  tick() { this.tone(1300, 0.05, 'square', 0.12); },
+  rampIn() { this.noise(0.45, 0.35, 600, 0.8); this.tone(180, 0.45, 'sawtooth', 0.07, 520); },
+  rampOut() { this.noise(0.1, 0.5, 1600, 1); this.tone(140, 0.12, 'sine', 0.45, 60); this.tone(1400, 0.06, 'square', 0.05, 2000, 0.05); },
+  setRamp(on) { if (!this.rampG) return; this.rampG.gain.setTargetAtTime(on && save.sfx ? 0.16 : 0, this.c.currentTime, 0.05); },
   note(f, d, type, v, t, lp) {
     const c = this.c; const o = c.createOscillator(); const g = c.createGain(); const fl = c.createBiquadFilter();
     o.type = type; o.frequency.value = f; fl.type = 'lowpass'; fl.frequency.value = lp;
@@ -137,6 +160,22 @@ const Snd = {
   kickAt(t) { const c = this.c; const o = c.createOscillator(); const g = c.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.15); g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); o.connect(g); g.connect(this.mus); o.start(t); o.stop(t + 0.25); },
   snareAt(t) { const c = this.c; const s = c.createBufferSource(); s.buffer = this.noiseBuf; const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1500; const g = c.createGain(); g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15); s.connect(f); f.connect(g); g.connect(this.musIn); s.start(t, Math.random()); s.stop(t + 0.2); },
   hatAt(t) { const c = this.c; const s = c.createBufferSource(); s.buffer = this.noiseBuf; const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000; const g = c.createGain(); g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04); s.connect(f); f.connect(g); g.connect(this.mus); s.start(t, Math.random()); s.stop(t + 0.06); }
+};
+
+/* ---------- Voz del locutor (TextToSpeech del móvil) ---------- */
+const Voice = {
+  es: null, lastT: 0,
+  say(t) {
+    if (!save.voice) return;
+    const now = performance.now(); if (now - this.lastT < 350) return; this.lastT = now;
+    try { if (window.Android && Android.speak) { Android.speak(t); return; } } catch (e) {}
+    try {
+      const ss = window.speechSynthesis; if (!ss || typeof SpeechSynthesisUtterance === 'undefined') return;
+      if (!this.es) { const vs = ss.getVoices() || []; this.es = vs.find(v => /es[-_]ES/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null; }
+      const u = new SpeechSynthesisUtterance(t); u.lang = 'es-ES'; if (this.es) u.voice = this.es;
+      u.rate = 1.08; u.pitch = 1.15; u.volume = 1; ss.cancel(); ss.speak(u);
+    } catch (e) {}
+  }
 };
 
 /* =========================================================
@@ -269,14 +308,14 @@ let timeScale = 1, slowUntil = 0;
 function newGame() {
   G = { score: 0, ball: 1, lanes: [0, 0, 0], skill: -1, drops: [0, 0, 0], dropReset: 0, stands: [0, 0, 0],
     mult: 1, lockLit: false, locks: 0, multiball: false, jackpot: 50000, kickback: true, saveUntil: 0, saveArmed: true,
-    bumperHits: 0, superUntil: 0, turbo: [0, 0, 0, 0, 0], turboDone: false, spins: 0, bonus: 0, orbitT: -9, orbitCombo: 0, endBall: 0, overT: 0, extraBalls: 0, ejectQ: [], lastPts: 0, newHigh: false, tiltWarn: 0 };
+    bumperHits: 0, superUntil: 0, turbo: [0, 0, 0, 0, 0], turboDone: false, spins: 0, ramps: [0, 0], rampT: -9, rampCombo: 0, missionLit: false, missionIdx: 0, mission: null, missionsDone: 0, bonus: 0, orbitT: -9, orbitCombo: 0, endBall: 0, overT: 0, extraBalls: 0, ejectQ: [], lastPts: 0, newHigh: false, tiltWarn: 0 };
   balls = []; msgQ.length = 0; dmdMsg = null; plunger.charging = false; plunger.pull = 0;
   STATE = 'play'; clock = 0; hintT = save.games < 3 ? 7 : 3;
   save.games++; persist();
   serveBall(false);
   Snd.start();
-  showMsg(['BOLA 1', 'A JUGAR!'], 1.6, 'zoom');
-  FX.flashAll(1.0);
+  showMsg(['BOLA 1', 'A JUGAR!'], 1.8, 'zoom', false, 'party');
+  FX.flashAll(1.0); FX.show('up', 1.5); Voice.say('¡Bienvenido a Piru Pinball! ¡A jugar!');
 }
 function makeBall(x, y) {
   const b = { x, y, vx: 0, vy: 0, r: BR, held: 0, heldT: 0, inPlunger: false, stillT: 0, eject: 0, id: Math.random(), mesh: null, h: BR, lockGhost: false };
@@ -298,8 +337,8 @@ function addScore(p, x, y, label, color) {
   G.score += p; G.lastPts = p;
   if (x !== undefined) FX.popup(x, y, (label ? label + ' ' : '') + fmt(p), color || '#fff');
 }
-function showMsg(lines, dur, fx, prio) {
-  const m = { lines, dur: dur || 1.5, fx: fx || '', t: 0 };
+function showMsg(lines, dur, fx, prio, piru) {
+  const m = { lines, dur: dur || 1.5, fx: fx || '', t: 0, piru: piru || null };
   if (prio) { dmdMsg = m; return; }
   if (!dmdMsg) dmdMsg = m; else if (msgQ.length < 4) msgQ.push(m);
 }
@@ -310,6 +349,7 @@ function hitBumper(c, b, v) {
   addScore((sup ? 1000 : 250) * (c.id > 2 ? 2 : 1), c.x, c.y, '', sup ? '#ff4' : '#6ff');
   G.bonus += 25; G.bumperHits++;
   if (G.bumperHits % 40 === 0) { G.superUntil = clock + 20; showMsg(['SUPER', 'BUMPERS'], 1.8, 'blink'); Snd.fanfare(); }
+  if (missionIs('lluvia')) { addScore(5000, c.x, c.y - 0.7, '', '#f8c'); missionProg(1); FX.confetti(c.x, c.y, 14); }
   Snd.bumper(c.id); vibrate(14);
   FX.bumperHit(c.id, b);
   breakSkill();
@@ -329,7 +369,7 @@ function hitDrop(s, b, v) {
   breakSkill();
   if (G.drops.every(d => d)) {
     addScore(5000, -3.5, 3.1, 'DIANAS', '#fd4');
-    if (!G.lockLit) { G.lockLit = true; showMsg(['LOCK', 'ENCENDIDO'], 1.8, 'blink'); }
+    if (!G.lockLit) { G.lockLit = true; showMsg(['LOCK', 'ENCENDIDO'], 1.8, 'blink'); Voice.say('¡Lock encendido!'); }
     else showMsg(['DIANAS', 'COMPLETAS'], 1.4);
     Snd.fanfare(); FX.flashAll(0.6);
     G.dropReset = clock + (G.lockLit ? 9999 : 2.5);
@@ -352,10 +392,11 @@ function hitTurbo(s, b, v) {
   const i = s.id;
   if (!G.turbo[i]) { G.turbo[i] = 1; addScore(1000, TURBO_X[i], -12.8, '', '#4ef'); } else addScore(200, TURBO_X[i], -12.8);
   G.bonus += 200; Snd.target(); vibrate(10); FX.turboHit(i); breakSkill();
+  if (missionIs('caza') && !G.mission.got[i]) { G.mission.got[i] = 1; addScore(10000, TURBO_X[i], -13.6, '', '#f8c'); missionProg(1); }
   if (G.turbo.every(x => x)) {
     G.turbo = [0, 0, 0, 0, 0];
     addScore(25000, -0.3, -12.5, 'DULCE', '#4ef');
-    if (!G.turboDone) { G.turboDone = true; G.extraBalls++; showMsg(['DULCE!', 'BOLA EXTRA'], 2.2, 'jackpot', true); Snd.jackpot(); FX.bigFlash(-0.3, -13, NEON.cyan); slowMo(0.6); }
+    if (!G.turboDone) { G.turboDone = true; G.extraBalls++; showMsg(['DULCE!', 'BOLA EXTRA'], 2.2, 'jackpot', true, 'party'); Snd.jackpot(); Snd.knocker(); Voice.say('¡Bola extra!'); FX.confetti(-0.3, -13, 60); FX.bigFlash(-0.3, -13, NEON.cyan); slowMo(0.6); }
     else { showMsg(['DULCE!', '25.000'], 1.6, 'zoom'); Snd.fanfare(); FX.flashAll(0.8); }
   }
 }
@@ -368,7 +409,7 @@ function rotateLanes(dir) {
 function laneHit(i, b) {
   if (G.skill === i) {
     G.skill = -1; addScore(25000, LANE_POSTS[i] + 0.6, -19.4, 'SKILL', '#ff4');
-    showMsg(['SKILL SHOT!', '25.000'], 2, 'zoom', true); Snd.jackpot(); FX.bigFlash(LANE_POSTS[i] + 0.6, -19.4, NEON.yellow); slowMo(0.6);
+    showMsg(['SKILL SHOT!', '25.000'], 2, 'zoom', true, 'party'); Snd.jackpot(); Voice.say('¡Skill shot!'); FX.bigFlash(LANE_POSTS[i] + 0.6, -19.4, NEON.yellow); slowMo(0.6);
   } else { G.skill = -1; addScore(G.lanes[i] ? 100 : 500, LANE_POSTS[i] + 0.6, -19.4); }
   G.lanes[i] = 1; G.bonus += 100; Snd.roll();
   if (G.lanes.every(x => x)) {
@@ -382,9 +423,11 @@ function saucerCapture(b) {
   b.held = 1; b.heldT = 0; b.vx = b.vy = 0; b.x = SAUCER.x; b.y = SAUCER.y;
   Snd.saucer(); vibrate(30); breakSkill();
   FX.saucerHit();
-  if (G.multiball) {
+  if (G.missionLit && !G.multiball && !G.mission) {
+    startMission(b);
+  } else if (G.multiball) {
     const jp = G.jackpot; addScore(jp, SAUCER.x, SAUCER.y - 0.6, 'JACKPOT', '#ff4'); G.jackpot += 25000;
-    showMsg(['JACKPOT!', fmt(jp * 2)], 2.5, 'jackpot', true); Snd.jackpot(); vibrate(120);
+    showMsg(['JACKPOT!', fmt(jp * 2)], 2.5, 'jackpot', true, 'party'); Snd.jackpot(); vibrate(120); Voice.say('¡Jackpot!'); FX.confetti(SAUCER.x, SAUCER.y, 70); FX.show('strobe', 1.2);
     FX.bigFlash(SAUCER.x, SAUCER.y, NEON.yellow); slowMo(0.9); FX.shake(0.5);
     b.holdFor = 1.3;
   } else if (G.lockLit) {
@@ -392,7 +435,7 @@ function saucerCapture(b) {
     addScore(5000, SAUCER.x, SAUCER.y - 0.6, 'LOCK');
     if (G.locks >= 2) { startMultiball(b); }
     else {
-      showMsg(['BOLA 1', 'BLOQUEADA'], 2, 'blink', true); Snd.fanfare();
+      showMsg(['BOLA 1', 'BLOQUEADA'], 2, 'blink', true, 'happy'); Snd.fanfare(); Voice.say('¡Bola bloqueada!');
       b.lockGhost = true; b.holdFor = 0.8;
       setTimeout(() => { if (STATE === 'play' || STATE === 'pause') resetDrops(); }, 900);
     }
@@ -403,7 +446,7 @@ function saucerCapture(b) {
 }
 function startMultiball(b) {
   G.multiball = true; G.locks = 0; G.jackpot = Math.max(G.jackpot, 50000);
-  showMsg(['MULTIBOLA!', 'JACKPOT EN EL AGUJERO'], 3, 'multiball', true);
+  showMsg(['MULTIBOLA!', 'JACKPOT EN EL AGUJERO'], 3, 'multiball', true, 'party'); Voice.say('¡Multibola!'); FX.show('rainbow', 3); FX.confetti(SAUCER.x, SAUCER.y, 80);
   Snd.jackpot(); vibrate(200); FX.bigFlash(SAUCER.x, SAUCER.y, NEON.pink); FX.flashAll(2); slowMo(1.0); FX.shake(0.6);
   b.holdFor = 1.6;
   G.ejectQ.push(clock + 2.4);            // segunda bola (la bloqueada) sale del agujero
@@ -422,7 +465,7 @@ function drainBall(b) {
   if (STATE !== 'play' && STATE !== 'pause') return;
   const left = balls.filter(x => !x.dead && !x.lockGhost).length;
   if (clock < G.saveUntil) {
-    showMsg(['BOLA', 'SALVADA'], 1.5, 'blink', true); Snd.save();
+    showMsg(['BOLA', 'SALVADA'], 1.5, 'blink', true, 'happy'); Snd.save(); Voice.say('¡Bola salvada!');
     setTimeout(() => { if (G && STATE !== 'title' && STATE !== 'over') serveBall(true); }, 600);
     return;
   }
@@ -432,20 +475,21 @@ function drainBall(b) {
   }
   if (left >= 1) return;
   Snd.drain(); vibrate(120); FX.drainFx();
+  if (G.mission) missionEnd(false, true);
   endOfBall();
 }
 function endOfBall() {
   const bonus = G.bonus * G.mult;
   G.endBall = clock;
-  showMsg(['BONUS ' + fmt(G.bonus), 'X' + G.mult + ' = ' + fmt(bonus)], 2.4, 'count', true);
+  showMsg(['BONUS ' + fmt(G.bonus), 'X' + G.mult + ' = ' + fmt(bonus)], 2.4, 'count', true, 'sad');
   G.score += bonus;
   setTimeout(() => {
     if (!G || STATE === 'title') return;
     G.bonus = 0; G.mult = 1; G.lanes = [0, 0, 0]; G.superUntil = 0; G.saveArmed = true; G.endBall = 0;
-    if (G.extraBalls > 0) { G.extraBalls--; showMsg(['BOLA', 'EXTRA'], 1.5, 'blink'); serveBall(false); return; }
+    if (G.extraBalls > 0) { G.extraBalls--; showMsg(['BOLA', 'EXTRA'], 1.5, 'blink', false, 'happy'); Voice.say('Bola extra. ¡Dispara otra vez!'); serveBall(false); return; }
     G.ball++;
     if (G.ball > 3) { gameOver(); return; }
-    showMsg(['BOLA ' + G.ball, ''], 1.4, 'zoom');
+    showMsg(['BOLA ' + G.ball, ''], 1.4, 'zoom', false, 'happy'); Voice.say(G.ball === 3 ? '¡Última bola!' : 'Bola ' + G.ball);
     serveBall(false);
   }, 2600);
 }
@@ -455,9 +499,101 @@ function gameOver() {
   const h = save.high; h.push(G.score); h.sort((a, b) => b - a); save.high = h.slice(0, 5); persist();
   G.newHigh = save.high[0] === G.score && G.score > 0;
   showMsg(G.newHigh ? ['NUEVO RECORD!', fmt(G.score)] : ['FIN DE PARTIDA', fmt(G.score)], 99, G.newHigh ? 'jackpot' : 'blink', true);
-  if (G.newHigh) { Snd.jackpot(); FX.flashAll(2); } else Snd.drain();
+  if (G.newHigh) { Snd.jackpot(); FX.flashAll(2); FX.confetti(CX, 0, 120); Voice.say('¡Nuevo récord! ¡Eres el rey de la piruleta!'); } else { Snd.drain(); Voice.say('Fin de la partida'); }
 }
 function slowMo(d) { slowUntil = performance.now() / 1000 + d; }
+
+/* ---------- Misiones ---------- */
+const MISSIONS = [
+  { id: 'lluvia', name: ['LLUVIA DE', 'CARAMELOS'], short: 'LLUVIA', goal: 15, time: 30, hint: 'DALE A LOS BUMPERS', voice: '¡Lluvia de caramelos! Dale a los bumpers.' },
+  { id: 'fiebre', name: ['FIEBRE DE', 'AZUCAR'], short: 'FIEBRE', goal: 3, time: 35, hint: 'TIRA A LAS RAMPAS', voice: '¡Fiebre de azúcar! Tira a las rampas.' },
+  { id: 'remolino', name: ['REMOLINO', 'LOCO'], short: 'REMOLINO', goal: 50, time: 30, hint: 'GIRA EL REMOLINO', voice: '¡Remolino loco! Haz girar el remolino.' },
+  { id: 'caza', name: ['CAZA', 'DULCE'], short: 'CAZA', goal: 5, time: 40, hint: 'DIANAS D-U-L-C-E', voice: '¡Caza dulce! Derriba las letras dulce.' }
+];
+function missionIs(id) { return G && G.mission && MISSIONS[G.mission.i].id === id; }
+function startMission(b) {
+  const i = G.missionIdx % MISSIONS.length, M = MISSIONS[i];
+  G.missionLit = false; G.ramps = [0, 0];
+  G.mission = { i, t: M.time, prog: 0, got: [0, 0, 0, 0, 0] };
+  addScore(10000, SAUCER.x, SAUCER.y - 0.6, 'MISION');
+  showMsg(M.name, 2.6, 'multiball', true, 'party'); showMsg([M.hint, M.time + ' SEGUNDOS'], 1.8, 'blink');
+  Voice.say(M.voice); Snd.fanfare(); FX.show('rainbow', 2.5); FX.confetti(SAUCER.x, SAUCER.y, 50); FX.flashAll(1.5); slowMo(0.6);
+  b.holdFor = 2.2;
+}
+function missionProg(n) {
+  const m = G.mission; if (!m) return;
+  m.prog += n; const M = MISSIONS[m.i];
+  if (m.prog >= M.goal) missionEnd(true);
+}
+function missionEnd(ok, silent) {
+  const m = G.mission; if (!m) return;
+  const M = MISSIONS[m.i]; G.mission = null;
+  if (ok) {
+    G.missionsDone++; G.missionIdx++;
+    const p = 50000 * G.missionsDone; addScore(p, CX, -2, 'MISION', '#ff4');
+    showMsg(['MISION CUMPLIDA', fmt(p * (G.multiball ? 2 : 1))], 2.6, 'jackpot', true, 'party');
+    Voice.say('¡Misión cumplida!'); Snd.jackpot(); Snd.knocker(); FX.show('strobe', 1.5); FX.confetti(CX, -2, 100); FX.bigFlash(CX, -2, NEON.pink); slowMo(0.7);
+    if (G.missionsDone % MISSIONS.length === 0) {
+      setTimeout(() => { if (!G || STATE === 'title') return; addScore(250000, CX, -4, 'MAGO', '#ff4'); showMsg(['MAGO DE LA', 'PIRULETA!'], 3.5, 'jackpot', true, 'party'); Voice.say('¡Increíble! ¡Eres el mago de la piruleta!'); Snd.jackpot(); FX.show('rainbow', 4); FX.confetti(CX, -4, 160); }, 2700);
+    }
+  } else if (!silent) {
+    showMsg(['MISION', 'TERMINADA'], 1.8, 'blink', true, 'sad'); Voice.say('Se acabó el tiempo');
+  }
+}
+/* ---------- Rampas (recorrido 3D) ---------- */
+const RAMPS = [
+  { id: 0, mx0: -2.8, mx1: -1.6, col: NEON.cyan,
+    pts: [[-2.2, -3.0, 0.02], [-2.2, -6.2, 0.95], [-2.1, -11.6, 1.85], [-2.75, -13.55, 2.15], [-3.8, -13.0, 2.05], [-4.12, -9.5, 1.8], [-4.1, -2.0, 1.25], [-3.55, 4.0, 0.5], [-3.35, 5.3, 0.02]], exit: [-3.35, 5.3] },
+  { id: 1, mx0: 0.45, mx1: 1.65, col: NEON.pink,
+    pts: [[1.05, -3.0, 0.02], [1.05, -6.6, 0.95], [1.3, -11.6, 1.85], [2.15, -13.55, 2.15], [3.2, -13.0, 2.05], [3.5, -9.8, 1.8], [3.45, -2.0, 1.25], [2.85, 4.0, 0.5], [2.7, 5.3, 0.02]], exit: [2.7, 5.3] }
+];
+RAMPS.forEach(r => {
+  r.curve = new THREE.CatmullRomCurve3(r.pts.map(p => new THREE.Vector3(p[0], p[2], p[1])), false, 'centripetal');
+  r.len = r.curve.getLength();
+  // boca de la rampa: paredes laterales y fondo (si la bola llega lenta, rebota)
+  seg(r.mx0, -3.8, r.mx0, -2.55, { r: 0.08, color: r.col, h: 0.4 });
+  seg(r.mx1, -3.8, r.mx1, -2.55, { r: 0.08, color: r.col, h: 0.4 });
+  seg(r.mx0, -3.8, r.mx1, -3.8, { r: 0.08, e: 0.4, vis: false });
+  circ(r.mx0, -2.55, 0.1, { kind: 'rubber' }); circ(r.mx1, -2.55, 0.1, { kind: 'rubber' });
+});
+function checkRampEntry(b) {
+  for (const r of RAMPS) {
+    if (b.x > r.mx0 + 0.12 && b.x < r.mx1 - 0.12 && b.y < -2.75 && b.y > -3.6 && b.vy < -7) {
+      b.ramp = { r, s: 0, v: clamp(-b.vy * 0.75, 15, 26) };
+      Snd.rampIn(); FX.rampIn(r); return true;
+    }
+  }
+  return false;
+}
+function rideRamp(b, dt) {
+  const R = b.ramp, r = R.r;
+  const u0 = clamp(R.s / r.len, 0, 1);
+  const p0 = r.curve.getPointAt(u0);
+  R.s += R.v * dt;
+  const u = clamp(R.s / r.len, 0, 1), p = r.curve.getPointAt(u);
+  const ds = Math.max(1e-4, R.v * dt), dh = p.y - p0.y;
+  R.v = clamp(R.v - (dh / ds) * GRAV * 0.9 * dt * 10, 9, 30);
+  b.x = p.x; b.y = p.z; b.h = p.y + BR;
+  b.vx = (p.x - p0.x) / Math.max(dt, 1e-4); b.vy = (p.z - p0.z) / Math.max(dt, 1e-4);
+  if (u >= 1) {
+    b.ramp = null; b.x = r.exit[0]; b.y = r.exit[1]; b.vx = 0; b.vy = 7; b.h = BR;
+    rampShot(r);
+  }
+}
+function rampShot(r) {
+  if (!G) return;
+  const combo = clock - G.rampT < 5 ? G.rampCombo + 1 : 1; G.rampCombo = combo; G.rampT = clock;
+  const p = 10000 * Math.min(5, combo); G.bonus += 1000;
+  addScore(p, r.exit[0], r.exit[1] - 1, combo > 1 ? 'COMBO x' + combo : 'RAMPA', r.id ? '#f6c' : '#6ef');
+  Snd.rampOut(); vibrate(20); FX.show('up', 0.9); FX.confetti(r.exit[0], r.exit[1], 18);
+  if (combo > 1) { showMsg(['COMBO', 'x' + combo + '  ' + fmt(p)], 1.4, 'zoom', false, 'party'); Voice.say(combo >= 3 ? '¡Súper combo!' : '¡Combo!'); }
+  else Voice.say(r.id ? '¡Rampa derecha!' : '¡Rampa izquierda!');
+  if (missionIs('fiebre')) { addScore(25000, r.exit[0], r.exit[1] - 1.8, '', '#f8c'); missionProg(1); }
+  if (!G.mission && !G.missionLit) {
+    G.ramps[r.id] = 1;
+    if (G.ramps[0] && G.ramps[1]) { G.missionLit = true; showMsg(['MISION LISTA', 'VE AL AGUJERO'], 2.2, 'blink', false, 'happy'); Voice.say('Misión lista. ¡Ve al agujero!'); }
+  }
+}
 
 /* =========================================================
    FÍSICA
@@ -527,9 +663,9 @@ function collideFlipper(b, f) {
 }
 function collideBalls() {
   for (let i = 0; i < balls.length; i++) {
-    const a = balls[i]; if (a.held || a.dead) continue;
+    const a = balls[i]; if (a.held || a.dead || a.ramp) continue;
     for (let j = i + 1; j < balls.length; j++) {
-      const b = balls[j]; if (b.held || b.dead) continue;
+      const b = balls[j]; if (b.held || b.dead || b.ramp) continue;
       const dx = b.x - a.x, dy = b.y - a.y, R = a.r + b.r, d2 = dx * dx + dy * dy;
       if (d2 >= R * R || d2 < 1e-9) continue;
       const d = Math.sqrt(d2), nx = dx / d, ny = dy / d, p = (R - d) / 2;
@@ -550,6 +686,7 @@ function physStep(dt) {
   updateFlippers(dt);
   for (const b of balls) {
     if (b.dead || b.held) continue;
+    if (b.ramp) { rideRamp(b, dt); continue; }
     if (b.inPlunger) {
       b.x = LANE_X; b.vx = 0;
       if (plunger.charging || plunger.auto > 0 || plunger.pull > 0) { b.y = PLUNGER_Y + plunger.pull * 0.55; b.vy = 0; continue; }
@@ -559,6 +696,7 @@ function physStep(dt) {
     if (sp > VMAX) { b.vx *= VMAX / sp; b.vy *= VMAX / sp; }
     const damp = 1 - 0.05 * dt; b.vx *= damp; b.vy *= damp;
     b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.vy < -7 && b.y < -2.7 && b.y > -3.7 && checkRampEntry(b)) continue;
     for (let i = 0; i < segs.length; i++) {
       const s = segs[i];
       // descarte rápido por caja
@@ -590,6 +728,7 @@ function gameLogic(dt) {
       if (!b.lockGhost && b.heldT > (b.holdFor || 1)) ejectFromSaucer(b);
       continue;
     }
+    if (b.ramp) continue;
     if (b.inPlunger && b.y < 8.4) { b.inPlunger = false; }
     // agujero
     if (b.eject <= 0) {
@@ -615,6 +754,14 @@ function gameLogic(dt) {
     const nb = makeBall(SAUCER.x, SAUCER.y); nb.held = 1; nb.heldT = 0; nb.holdFor = 0.4; nb.h = 0.05;
   }
   if (G.dropReset && clock > G.dropReset && !G.lockLit) resetDrops();
+  // misión en curso: cuenta atrás
+  if (G.mission && !G.endBall) {
+    const prev = G.mission.t; G.mission.t -= dt;
+    if (G.mission.t <= 5 && Math.ceil(prev) !== Math.ceil(G.mission.t) && G.mission.t > 0) Snd.tick();
+    if (G.mission.t <= 0) missionEnd(false);
+    else if (missionIs('lluvia')) FX.candyRain(dt);
+  }
+  Snd.setRamp(balls.some(b => b.ramp));
   // lanzador
   const pb = ballInPlunger();
   if (pb) {
@@ -626,7 +773,7 @@ function gameLogic(dt) {
       if (Math.floor(prev * 10) !== Math.floor(plunger.pull * 10)) Snd.charge(plunger.pull);
     }
   } else if (!plunger.charging) plunger.pull = Math.max(0, plunger.pull - dt * 6);
-  Snd.setRoll(balls.reduce((m, b) => b.held || b.inPlunger ? m : Math.max(m, Math.hypot(b.vx, b.vy)), 0));
+  Snd.setRoll(balls.reduce((m, b) => b.held || b.inPlunger || b.ramp ? m : Math.max(m, Math.hypot(b.vx, b.vy)), 0));
 }
 function launch(b, p) {
   b.vy = -(35 + 12 * p); b.vx = 0; plunger.pull = 0; plunger.charging = false;
@@ -645,6 +792,7 @@ sensor(SPINNER.x, SPINNER.y, 0.65, b => {
   const n = Math.round(clamp(Math.abs(b.vy) * 0.7, 2, 28)); G.spins = (G.spins || 0) + n;
   addScore(100 * n, SPINNER.x, SPINNER.y - 0.6, 'REMOLINO', '#6f9'); G.bonus += 20 * n;
   FX.spin(n, b.vy);
+  if (missionIs('remolino')) { addScore(500 * n, SPINNER.x, SPINNER.y - 1.3, '', '#f8c'); missionProg(n); }
   if (G.spins >= 100) { G.spins -= 100; addScore(15000, SPINNER.x, SPINNER.y - 1.2, 'SUPER REMOLINO', '#6f9'); showMsg(['SUPER', 'REMOLINO'], 1.5, 'zoom'); Snd.fanfare(); }
 }, { cool: 0.5 });
 sensor(-3.95, -16.6, 0.6, b => { if (b.vy < 0) G.orbitT = clock; }, { cool: 0.4 });
@@ -927,6 +1075,9 @@ const Scene3D = (() => {
   addInsert('inL', -3.3, 5.75, 'circle', NEON.cyan, 0.14);
   addInsert('inR', mx(-3.3), 5.75, 'circle', NEON.cyan, 0.14);
   addInsert('skill', 4.4, 3.5, 'arrow', NEON.yellow, 0.25, 0);
+  addInsert('rampL', -2.2, -2.15, 'arrow', NEON.cyan, 0.32, 0);
+  addInsert('rampR', 1.05, -2.15, 'arrow', NEON.pink, 0.32, 0);
+  addInsert('mision', 2.3, -2.25, 'circle', NEON.pink, 0.2);
   addInsert('sun', CX, 1.7, 'circle', [2.2, 0.6, 0.35], 2.05);
   inserts.sun.m.position.y = 0.004;
 
@@ -1001,6 +1152,49 @@ const Scene3D = (() => {
     const bt = new THREE.CanvasTexture(bc); bt.colorSpace = THREE.SRGBColorSpace;
     const bb = new THREE.Mesh(new THREE.PlaneGeometry(26, 13), new THREE.MeshBasicMaterial({ map: bt, color: new THREE.Color(0.9, 0.9, 0.9), fog: false })); bb.position.set(0.1, 4.5, TOP_Y - 8); scene.add(bb);
   }
+
+  /* ---------- Rampas 3D ---------- */
+  const rampVis = RAMPS.map(r => {
+    const N = 140, pos = [], idx = [], up3 = new THREE.Vector3(0, 1, 0);
+    const L = [], Rr = [];
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, p = r.curve.getPointAt(u), tg = r.curve.getTangentAt(u);
+      const side = new THREE.Vector3().crossVectors(tg, up3).normalize().multiplyScalar(0.36);
+      const a = p.clone().add(side), b2 = p.clone().sub(side);
+      pos.push(a.x, a.y + 0.02, a.z, b2.x, b2.y + 0.02, b2.z);
+      L.push(a.clone().add(new THREE.Vector3(0, 0.2, 0))); Rr.push(b2.clone().add(new THREE.Vector3(0, 0.2, 0)));
+      if (i < N) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const floor = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: new THREE.Color(r.col[0] / 6, r.col[1] / 6, r.col[2] / 6), emissive: new THREE.Color(r.col[0] / 12, r.col[1] / 12, r.col[2] / 12), transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false, roughness: 0.3, metalness: 0.2 }));
+    scene.add(floor);
+    const railMat2 = new THREE.MeshBasicMaterial({ color: new THREE.Color(r.col[0] * 0.5, r.col[1] * 0.5, r.col[2] * 0.5) });
+    [L, Rr].forEach(pts => { const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 160, 0.035, 6, false), railMat2); scene.add(tube); });
+    for (let u = 0.12; u < 0.95; u += 0.11) {
+      const p = r.curve.getPointAt(u); if (p.y < 0.35) continue;
+      const sup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, p.y, 6), wallMat); sup.position.set(p.x, p.y / 2, p.z); scene.add(sup);
+    }
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(r.mx1 - r.mx0, 0.03, 0.4), new THREE.MeshStandardMaterial({ color: 0xcfd0e0, metalness: 0.9, roughness: 0.3, envMap: envTex, envMapIntensity: 0.4 }));
+    lip.position.set((r.mx0 + r.mx1) / 2, 0.03, -2.85); lip.rotation.x = 0.12; scene.add(lip);
+    return { railMat: railMat2, col: r.col, flash: 0 };
+  });
+
+  /* ---------- Piruletas que giran y piruletas gigantes decorativas ---------- */
+  const lolliTex = (cols, neon) => { const c = document.createElement('canvas'); c.width = c.height = 512; drawLolli(c.getContext('2d'), 256, 256, 236, cols, 0, neon); const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx; };
+  const spinLollis = [];
+  [[CX, 1.7, 2.25, ['#ff2f8e', '#ffffff', '#ffd23f', '#ffffff'], '#ff2fa8', 0.25], [CX, -9.6, 1.65, ['#00d9ff', '#ffffff', '#b46bff', '#ffffff'], '#00e5ff', -0.35]].forEach(d => {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(d[2], 64), new THREE.MeshStandardMaterial({ map: lolliTex(d[3], d[4]), transparent: true, roughness: 0.5, emissive: 0xffffff, emissiveIntensity: 0.0 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(d[0], 0.006, d[1]); scene.add(m); spinLollis.push({ m, sp: d[5] });
+  });
+  const toppers = [];
+  [[-4.25, TOP_Y + 1.2, ['#ff2f8e', '#ffffff', '#ffd23f', '#ffffff'], '#ff2fa8'], [4.45, TOP_Y + 1.2, ['#00d9ff', '#ffffff', '#9dff6a', '#ffffff'], '#00e5ff'], [-5.2, 6.5, ['#c08cff', '#ffffff'], '#c08cff'], [5.4, 6.5, ['#ffd23f', '#ffffff'], '#ffd23f']].forEach((d, i) => {
+    const g = new THREE.Group(); g.position.set(d[0], 0, d[1]);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.4, 10), new THREE.MeshStandardMaterial({ color: 0xf4eefa, roughness: 0.5 })); stick.position.y = 1.2; g.add(stick);
+    const tx = lolliTex(d[2], d[3]);
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.78, 0.16, 48), [new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.35 }), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.35 })]);
+    head.rotation.x = Math.PI / 2; const pivot = new THREE.Group(); pivot.position.y = 2.9; pivot.add(head); g.add(pivot);
+    scene.add(g); toppers.push({ g, pivot, head, ph: i * 1.7 });
+  });
 
   /* ---------- Bolas ---------- */
   const ballGeo = new THREE.SphereGeometry(BR, 32, 20);
@@ -1135,12 +1329,16 @@ const Scene3D = (() => {
       for (let i = 0; i < 3; i++) lvl('stand' + i, G.stands[i] ? 1 : 2);
       lvl('lock', G.lockLit ? 2 : (G.locks ? 1 : 0));
       lvl('jack', G.multiball ? 2 : 0);
+      const fe = missionIs('fiebre');
+      lvl('rampL', fe || (!G.mission && !G.ramps[0]) ? 2 : 1); lvl('rampR', fe || (!G.mission && !G.ramps[1]) ? 2 : 1);
+      lvl('mision', G.missionLit ? 2 : (G.mission ? 1 : 0));
       lvl('kick', G.kickback ? 1 : 0);
       lvl('save', clock < G.saveUntil ? (G.saveUntil - clock < 3 ? 2 : 1) : 0);
       lvl('orbL', clock - G.orbitT < 2.2 ? 2 : 1); lvl('orbR', clock - G.orbitT < 2.2 ? 2 : 1);
       lvl('skill', ballInPlunger() ? 2 : 0);
       for (let i = 0; i < 5; i++) lvl('turbo' + i, G.turbo[i] ? 1 : 2);
-      lvl('spin', 1);
+      lvl('spin', missionIs('remolino') ? 2 : 1);
+      if (missionIs('caza')) for (let i = 0; i < 5; i++) lvl('turbo' + i, G.mission.got[i] ? 1 : 2);
       lvl('sun', 1);
     } else {
       // modo demostración: persecución de luces
@@ -1153,7 +1351,7 @@ const Scene3D = (() => {
       let target = i.state === 1 ? 0.75 : (i.state === 2 ? (blinkOn ? 0.75 : 0.1) : 0.06);
       if (n === 'sun') target = 0.05 + 0.03 * Math.sin(camT * 2) + FX.allFlash * 0.3;
       i.lvl = lerp(i.lvl, target, Math.min(1, rt * 18)) ;
-      const k = Math.min(3, i.lvl + i.flash + FX.allFlash * 0.8); i.flash = Math.max(0, i.flash - rt * 3);
+      const k = Math.min(3, i.lvl + i.flash + FX.allFlash * 0.8 + FX.showBoost(i.m.position.z, i.m.position.x)); i.flash = Math.max(0, i.flash - rt * 3);
       i.mat.color.setRGB(i.c[0] * k, i.c[1] * k, i.c[2] * k);
     }
     // bumpers
@@ -1189,21 +1387,26 @@ const Scene3D = (() => {
     plungerG.position.z = 9.9 + plunger.pull * 0.55;
     gateSwing = Math.max(0, gateSwing - rt * 3); gateG.rotation.x = -Math.sin(Math.min(1, gateSwing) * 1.3) * 1.0;
     // leds
-    ledMat.uniforms.uT.value = camT * (G && G.multiball ? 3 : 1);
+    const modeSp = G && (G.multiball || G.mission) ? 3 : 1;
+    ledMat.uniforms.uT.value += rt * modeSp;
+    rampVis.forEach((rv, i) => { rv.flash = Math.max(0, rv.flash - rt * 2); const k = 0.5 + rv.flash * 1.6 + FX.allFlash * 0.5 + ((i ? inserts.rampR : inserts.rampL).state === 2 ? 0.25 * Math.sin(camT * 8) + 0.25 : 0); rv.railMat.color.setRGB(rv.col[0] * k, rv.col[1] * k, rv.col[2] * k); });
+    spinLollis.forEach(l => { l.m.rotation.z += rt * l.sp * modeSp * (1 + FX.allFlash * 3); l.m.material.emissiveIntensity = FX.allFlash * 0.25; });
+    toppers.forEach(tp => { tp.pivot.rotation.y = Math.sin(camT * 0.9 + tp.ph) * 0.5; tp.head.rotation.y += rt * 2 * modeSp; tp.pivot.position.y = 2.9 + Math.sin(camT * 2 + tp.ph) * 0.12 + FX.allFlash * 0.3; });
     ledMat.uniforms.uBoost.value = FX.allFlash;
     // bolas
     for (const b of balls) {
       if (!b.mesh) continue;
       let h = BR;
-      if (b.held) { b.h = lerp(b.h, 0.02, Math.min(1, rt * 8)); h = b.h; } else if (b.h < BR) { b.h = Math.min(BR, b.h + rt * 3); h = b.h; }
+      if (b.ramp) { h = b.h; } else if (b.held) { b.h = lerp(b.h, 0.02, Math.min(1, rt * 8)); h = b.h; } else if (b.h < BR) { b.h = Math.min(BR, b.h + rt * 3); h = b.h; }
       b.mesh.position.set(b.x, h, b.y);
       // rodadura
       const dx = b.x - b.prevX, dy = b.y - b.prevY, dist = Math.hypot(dx, dy);
       if (dist > 1e-5 && dist < 2) { const axis = new THREE.Vector3(dy, 0, -dx).normalize(); const qq = new THREE.Quaternion().setFromAxisAngle(axis, -dist / BR); b.mesh.quaternion.premultiply(qq); }
       b.prevX = b.x; b.prevY = b.y;
-      b.shadow.position.set(b.x + 0.12, 0.012, b.y + 0.08); b.shadow.visible = !b.held;
+      b.shadow.position.set(b.x + 0.12 + (b.ramp ? (b.h - BR) * 0.25 : 0), 0.012, b.y + 0.08 + (b.ramp ? (b.h - BR) * 0.35 : 0)); b.shadow.visible = !b.held;
       const sp = Math.hypot(b.vx, b.vy);
       // estela
+      if (b.ramp && rt > 0 && Math.random() < 0.5) emit(b.x, h - 0.15, b.y, rnd(-0.5, 0.5), 0.3, rnd(-0.5, 0.5), 0.3, 0.3, b.ramp.r.col.map(v => v * 0.6));
       if (sp > 14 && !b.held && rt > 0) {
         const n = sp > 28 ? 2 : 1;
         for (let k = 0; k < n; k++) emit(b.x - b.vx * 0.004 * k + rnd(-0.05, 0.05), h, b.y - b.vy * 0.004 * k + rnd(-0.05, 0.05), 0, 0.2, 0, 0.22, 0.42, G && G.multiball ? [2.5, 0.4, 1.6] : [0.4, 1.6, 2.6]);
@@ -1254,6 +1457,7 @@ const Scene3D = (() => {
 
   return {
     addBall, removeBall, update, render, resize, emit, shock,
+    rampFlash(i) { rampVis[i].flash = 1; },
     flash(x, y, c, k) { flashL.position.set(x, 1.4, y); flashL.color.setRGB(c[0] / 3, c[1] / 3, c[2] / 3); flashI = Math.max(flashI, k); },
     bump(i) { bumpers[i].flash = 1; }, sling(i) { slings[i < 0 ? 0 : 1].flash = 1; },
     drop(i) { dropMeshes[i].flash = 1; }, stand(i) { standMeshes[i].flash = 1; }, turbo(i) { turboMeshes[i].flash = 1; }, spin(w) { spinW = w; },
@@ -1293,9 +1497,31 @@ const FX = {
   inlane(side) { Scene3D.insertFlash(side ? 'inR' : 'inL', 3); },
   orbitFx() { Scene3D.insertFlash('orbL', 3); Scene3D.insertFlash('orbR', 3); this.flashAll(0.5); this.sparks(3.45, -4.8, 0.4, 30, NEON.purple, 6); this.aberr = 0.008; },
   launchFx(p) { this.sparks(LANE_X, 9.0, 0.3, 10 + p * 20, NEON.pink, 3 + p * 4); this.shake(0.05 + p * 0.15); this.shock(LANE_X, 9.2, NEON.pink, 0.8); },
+  showT: 0, showDur: 0, showType: '',
+  show(type, dur) { this.showType = type; this.showT = 0; this.showDur = dur; },
+  showBoost(z, x) {
+    if (this.showT >= this.showDur) return 0;
+    const k = 1 - this.showT / this.showDur, tt = this.showT;
+    if (this.showType === 'up') { const front = 11 - tt * 40; return Math.max(0, 1 - Math.abs(z - front) / 2.5) * 1.5 * k; }
+    if (this.showType === 'strobe') return Math.floor(tt * 14) % 2 ? 1.3 * k : 0;
+    if (this.showType === 'rainbow') return (0.5 + 0.5 * Math.sin(z * 0.8 + x * 0.6 - tt * 12)) * 1.2 * k;
+    return 0;
+  },
+  confetti(x, y, n) {
+    const C = [[2.4, 0.3, 1.2], [0.3, 1.9, 2.4], [2.4, 1.9, 0.3], [0.8, 2.4, 0.5], [1.6, 0.7, 2.4], [2.2, 2.2, 2.2]];
+    for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, v = rnd(1, 6); Scene3D.emit(x, 0.5, y, Math.cos(a) * v, rnd(4, 9), Math.sin(a) * v, rnd(0.9, 1.6), rnd(0.12, 0.22), C[i % C.length]); }
+  },
+  rainAcc: 0,
+  candyRain(dt) {
+    this.rainAcc += dt * 40;
+    const C = [[2.4, 0.3, 1.2], [0.3, 1.9, 2.4], [2.4, 1.9, 0.3], [0.8, 2.4, 0.5], [1.6, 0.7, 2.4]];
+    while (this.rainAcc > 1) { this.rainAcc--; const b = balls[0]; const cy0 = b ? b.y : 0; Scene3D.emit(rnd(-4.4, 4.0), rnd(3, 5), cy0 + rnd(-9, 6), rnd(-0.5, 0.5), -rnd(1, 3), 0, rnd(0.8, 1.2), rnd(0.12, 0.2), C[Math.floor(Math.random() * C.length)]); }
+  },
+  rampIn(r) { Scene3D.rampFlash(r.id); Scene3D.insertFlash(r.id ? 'rampR' : 'rampL', 3); this.sparks((r.mx0 + r.mx1) / 2, -3.0, 0.3, 16, r.col, 5); this.shock((r.mx0 + r.mx1) / 2, -3.0, r.col, 1.2); },
   drainFx() { this.screenFlash = 0.35; this.flashCol = [1, 0.05, 0.1]; this.aberr = 0.03; this.shake(0.4); },
   gateSwing() { Scene3D.gate(); },
   update(dt) {
+    this.showT += dt;
     this.allFlash = Math.max(0, this.allFlash - dt * 1.6);
     this.aberr = Math.max(0, this.aberr - dt * 0.05);
     this.screenFlash = Math.max(0, this.screenFlash - dt * 1.4);
@@ -1319,10 +1545,39 @@ function buildMask(w, h) {
   for (let j = 0; j < DH; j++) for (let i = 0; i < DW; i++) { x.beginPath(); x.arc((i + 0.5) * cw, (j + 0.5) * ch, r, 0, 7); x.fill(); }
   return c;
 }
-function dmdText(txt, y, size, align) {
+function dmdText(txt, y, size, align, x0, w) {
+  x0 = x0 || 0; w = w || DW;
   dx.font = `bold ${size}px "Courier New", monospace`; dx.textBaseline = 'middle'; dx.textAlign = align || 'center';
-  let s = size; while (dx.measureText(txt).width > DW - 4 && s > 7) { s--; dx.font = `bold ${s}px "Courier New", monospace`; }
-  dx.fillText(txt, align === 'left' ? 2 : (align === 'right' ? DW - 2 : DW / 2), y);
+  let s = size; while (dx.measureText(txt).width > w - 4 && s > 7) { s--; dx.font = `bold ${s}px "Courier New", monospace`; }
+  dx.fillText(txt, align === 'left' ? x0 + 2 : (align === 'right' ? x0 + w - 2 : x0 + w / 2), y);
+}
+/* Piru, la piruleta mascota, en pixel-art para el marcador */
+function drawPiru(x, mood, t) {
+  const party = mood === 'party', sad = mood === 'sad';
+  const bob = sad ? 1 : Math.abs(Math.sin(t * (party ? 9 : 5))) * (party ? 3 : 1.5);
+  const cx = x + 13, cy = 10 - bob;
+  dx.save();
+  // palo y brazos/piernas
+  dx.strokeStyle = '#bbb'; dx.lineWidth = 2; dx.lineCap = 'round';
+  dx.beginPath(); dx.moveTo(cx, cy + 8); dx.lineTo(cx, 27 - bob * 0.3); dx.stroke();
+  const wave = Math.sin(t * (party ? 14 : 6));
+  dx.lineWidth = 1.5; dx.beginPath();
+  if (sad) { dx.moveTo(cx, cy + 12); dx.lineTo(cx - 6, cy + 18); dx.moveTo(cx, cy + 12); dx.lineTo(cx + 6, cy + 18); }
+  else { dx.moveTo(cx, cy + 12); dx.lineTo(cx - 8, cy + 6 - wave * 5); dx.moveTo(cx, cy + 12); dx.lineTo(cx + 8, cy + (party ? 6 + wave * 5 : 14)); }
+  const step = party ? Math.sin(t * 9) * 3 : 0;
+  dx.moveTo(cx, 27 - bob * 0.3); dx.lineTo(cx - 4 - step, 31); dx.moveTo(cx, 27 - bob * 0.3); dx.lineTo(cx + 4 + step, 31); dx.stroke();
+  // cabeza con espiral
+  dx.fillStyle = '#999'; dx.beginPath(); dx.arc(cx, cy, 9, 0, 7); dx.fill();
+  dx.strokeStyle = '#fff'; dx.lineWidth = 1.4; dx.beginPath();
+  for (let k = 0; k < 40; k++) { const a = k * 0.42 + t * (party ? 6 : 2), r = k * 0.21; const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r; if (k) dx.lineTo(px, py); else dx.moveTo(px, py); }
+  dx.stroke();
+  // cara
+  dx.fillStyle = '#000'; dx.beginPath(); dx.arc(cx - 3.5, cy - 1.5, 1.8, 0, 7); dx.arc(cx + 3.5, cy - 1.5, 1.8, 0, 7); dx.fill();
+  dx.strokeStyle = '#000'; dx.lineWidth = 1.6; dx.beginPath();
+  if (sad) dx.arc(cx, cy + 5.5, 3, Math.PI * 1.15, Math.PI * 1.85); else dx.arc(cx, cy + 1.5, party ? 4 : 3, 0.2, Math.PI - 0.2);
+  dx.stroke();
+  if (sad) { dx.fillStyle = '#ddd'; dx.beginPath(); dx.arc(cx - 4, cy + 2 + (t * 6 % 6), 1.2, 0, 7); dx.fill(); }
+  dx.restore();
 }
 function drawDMD(dt) {
   dx.fillStyle = '#000'; dx.fillRect(0, 0, DW, DH);
@@ -1341,21 +1596,29 @@ function drawDMD(dt) {
     const vis = m.fx === 'blink' ? Math.floor(m.t * 8) % 2 === 0 || m.t > 0.8 : true;
     if (vis) {
       dx.save(); dx.translate(DW / 2, DH / 2); dx.scale(sc, sc); dx.translate(-DW / 2, -DH / 2);
-      if (m.lines[1]) { dmdText(m.lines[0], 10, 15); dmdText(m.lines[1], 25, 11); } else dmdText(m.lines[0], 16, 17);
+      const px0 = m.piru ? 28 : 0, pw = m.piru ? DW - 28 : DW;
+      if (m.lines[1]) { dmdText(m.lines[0], 10, 15, 'center', px0, pw); dmdText(m.lines[1], 25, 11, 'center', px0, pw); } else dmdText(m.lines[0], 16, 17, 'center', px0, pw);
       dx.restore();
     }
+    if (m.piru) drawPiru(1, m.piru, m.t);
     if (m.t > m.dur) dmdMsg = msgQ.shift() || null;
   } else if (STATE === 'title') {
     const ph = Math.floor(T / 3) % 3;
-    if (ph === 0) { dmdText('PIRU PINBALL', 11, 16); dmdText('- 3 D -', 26, 10); }
+    if (ph === 0) { const px = (T % 3) / 3 * 150 - 28; drawPiru(px, 'party', T); dmdText('PIRU PINBALL', 11, 16, 'center', 0, DW); dmdText('- 3 D -', 26, 10); }
     else if (ph === 1) { dmdText('RECORD', 9, 11); dmdText(fmt(save.high[0] || 0), 23, 15); }
     else { if (Math.floor(T * 2) % 2) dmdText('PULSA JUGAR', 16, 13); }
   } else if (G) {
     dmdText(fmt(G.score), 13, 19);
     dx.font = 'bold 8px "Courier New", monospace'; dx.textBaseline = 'middle';
-    dx.textAlign = 'left'; dx.fillText('BOLA ' + G.ball, 2, 28);
-    dx.textAlign = 'center'; dx.fillText(G.multiball ? 'MULTIBOLA' : (G.lockLit ? 'LOCK!' : (G.locks ? 'LOCK ' + G.locks + '/2' : '')), DW / 2, 28);
-    dx.textAlign = 'right'; dx.fillText('X' + G.mult, DW - 2, 28);
+    if (G.mission) {
+      const M = MISSIONS[G.mission.i];
+      dx.textAlign = 'left'; dx.fillText(M.short + ' ' + Math.min(G.mission.prog, M.goal) + '/' + M.goal, 2, 28);
+      if (G.mission.t > 5 || Math.floor(T * 6) % 2) { dx.textAlign = 'right'; dx.fillText(Math.ceil(G.mission.t) + 's', DW - 2, 28); }
+    } else {
+      dx.textAlign = 'left'; dx.fillText('BOLA ' + G.ball, 2, 28);
+      dx.textAlign = 'center'; dx.fillText(G.multiball ? 'MULTIBOLA' : (G.missionLit ? 'MISION!' : (G.lockLit ? 'LOCK!' : (G.locks ? 'LOCK ' + G.locks + '/2' : ''))), DW / 2, 28);
+      dx.textAlign = 'right'; dx.fillText('X' + G.mult, DW - 2, 28);
+    }
   }
   // binarizar a 3 niveles para el aspecto de matriz
   const id = dx.getImageData(0, 0, DW, DH), d = id.data;
@@ -1462,10 +1725,10 @@ function drawHUD(dt) {
     g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = `900 ${Math.round(28 * DPR)}px Arial Black, Impact, sans-serif`;
     if (menuPanel === 'settings') {
       g.fillText('AJUSTES', cxw, h * 0.28);
-      const opts = [['music', 'Música', save.music ? 'SÍ' : 'NO'], ['sfx', 'Sonido', save.sfx ? 'SÍ' : 'NO'], ['vib', 'Vibración', save.vib ? 'SÍ' : 'NO'],
+      const opts = [['music', 'Música', save.music ? 'SÍ' : 'NO'], ['sfx', 'Sonido', save.sfx ? 'SÍ' : 'NO'], ['vib', 'Vibración', save.vib ? 'SÍ' : 'NO'], ['voice', 'Voces', save.voice ? 'SÍ' : 'NO'],
         ['q', 'Gráficos', save.q ? 'ALTOS' : 'RÁPIDOS'], ['cam', 'Cámara', save.cam ? 'SIGUE LA BOLA' : 'MESA ENTERA']];
       opts.forEach((o, i) => btn('opt_' + o[0], cxw - bw / 2, h * 0.34 + i * bh * 1.18, bw, bh, o[1] + ': ' + o[2]));
-      btn('back', cxw - bw / 2, h * 0.34 + 5 * bh * 1.18 + bh * 0.3, bw, bh, 'VOLVER', 'main');
+      btn('back', cxw - bw / 2, h * 0.34 + 6 * bh * 1.18 + bh * 0.3, bw, bh, 'VOLVER', 'main');
     } else {
       g.fillText('RÉCORDS', cxw, h * 0.3);
       g.font = `bold ${Math.round(22 * DPR)}px "Courier New", monospace`;
@@ -1575,7 +1838,7 @@ function frame(now) {
     if (n >= 60) acc = 0;
     gameLogic(dt);
     hintT = Math.max(0, hintT - rt * 0.25);
-    if (Snd.c) Snd.music(G.multiball);
+    if (Snd.c) Snd.music(G.multiball ? 1 : (G.mission ? 2 : 0));
   } else {
     if (STATE === 'over' && G) G.overT += rt;
     if (Snd.c && STATE === 'title') Snd.music(false);

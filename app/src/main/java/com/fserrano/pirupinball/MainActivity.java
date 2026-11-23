@@ -7,6 +7,8 @@ import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
+import android.speech.tts.TextToSpeech;
+import java.util.Locale;
 import android.os.Vibrator;
 import android.view.View;
 import android.view.Window;
@@ -29,6 +31,8 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private SharedPreferences prefs;
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
 
     // Las actualizaciones del juego se descargan de aquí (repositorio público)
     private static final String BASE = "https://raw.githubusercontent.com/franciscoserranoadt/piru-pinball/main/app/src/main/assets/";
@@ -70,6 +74,15 @@ public class MainActivity extends Activity {
         hideBars();
         web.loadUrl(gameUrl());
         checkUpdate();
+        // Voz del locutor en español
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                int r = tts.setLanguage(new Locale("es", "ES"));
+                if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) r = tts.setLanguage(new Locale("es"));
+                tts.setPitch(1.12f); tts.setSpeechRate(1.1f);
+                ttsReady = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED;
+            }
+        });
     }
 
     /* ---------- Actualización automática del juego ---------- */
@@ -164,6 +177,12 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onDestroy() {
+        if (tts != null) { tts.stop(); tts.shutdown(); }
+        super.onDestroy();
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         web.evaluateJavascript("window.onAppPause && window.onAppPause();", null);
@@ -201,6 +220,11 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public int gameVersion() { return currentVersion(); }
+
+        @JavascriptInterface
+        public void speak(String text) {
+            if (tts != null && ttsReady) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "piru");
+        }
 
         @JavascriptInterface
         public void reload() {
